@@ -1,0 +1,77 @@
+---
+- yum: pkg={{item}} state=present
+  with_items:
+      - glibc.i686
+      - libgcc.i686
+      - unzip
+      - ksh
+      - tar
+
+- name: mkdir for MQ install
+  file: name={{mq_dist}} state=directory mode=0755
+
+- name: Unpack MQ zip
+  unarchive:
+    src: "{{mq_zip_url}}"
+    dest: "{{mq_dist}}"
+    copy: no
+    owner: root
+    group: root
+    mode: 0755
+    creates: "{{mq_dist}}/server/mqlicense.sh"
+
+- name: Accept MQ Client license
+  command: ksh mqlicense.sh -accept
+  args:
+      chdir: "{{mq_dist}}/server"
+      creates: /tmp/mq_license_8.0.0/license/status.dat
+
+- name: Install MQ rpms
+  yum: pkg={{mq_dist}}/server/{{item}} state=present
+  with_items:
+      - MQSeriesJava-8.0.0-2.x86_64.rpm
+      - MQSeriesRuntime-8.0.0-2.x86_64.rpm
+      - MQSeriesJRE-8.0.0-2.x86_64.rpm
+      - MQSeriesServer-8.0.0-2.x86_64.rpm
+
+- name: Add user {{mq_user}}
+  user: name={{mq_user}} shell=/bin/bash password={{mq_user_crypted_password}} comment="Websphere MQ User" group=mqm
+
+- name: Create QueueManager
+  command: /opt/mqm/bin/crtmqm -q {{mq_queue_name}}.queue.manager
+  args:
+      creates: /var/mqm/qmgrs/{{mq_queue_name}}!queue!manager
+  become: yes
+  become_user: mqm
+
+- name: Get QueueManager status
+  command: /opt/mqm/bin/dspmq -m {{mq_queue_name}}.queue.manager
+  become: yes
+  become_user: mqm
+  register: queue_man_status
+
+- name: Start created QueueManager
+  command: /opt/mqm/bin/strmqm {{mq_queue_name}}.queue.manager
+  become: yes
+  become_user: mqm
+  when: queue_man_status.stdout.find('STATUS(Running)') == -1
+
+- name: Copy MQ define commands
+  template: src=templates/mq-define.txt.j2 dest=/tmp/mq-define.txt owner=mqm
+
+- name: Define and start listener at 1414
+  shell: /opt/mqm/bin/runmqsc < /tmp/mq-define.txt
+  become: yes
+  become_user: mqm
+  register: mq_config
+  failed_when: mq_config.rc not in [0, 10]
+
+- name: Give group '{{mq_user}}' full administrative access on WebSphere MQ
+  command: /opt/mqm/bin/{{item}}
+  with_items:
+      - setmqaut -m {{mq_queue_name}}.queue.manager -t qmgr -p "{{mq_user}}" +connect +inq +alladm
+      - setmqaut -m {{mq_queue_name}}.queue.manager -t q -n "SYSTEM.**" -p "{{mq_user}}" +dsp +get +browse +inq +put
+      - setmqaut -m {{mq_queue_name}}.queue.manager -t q -n "ESB.OCP.**" -p "{{mq_user}}" +dsp +get +browse +inq +put
+      - setmqaut -m {{mq_queue_name}}.queue.manager -t q -n "STORM" -p "{{mq_user}}" +dsp +get +browse +inq +put
+  become: yes
+  become_user: mqm
