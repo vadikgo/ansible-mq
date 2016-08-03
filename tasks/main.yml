@@ -37,6 +37,30 @@
 - name: Add user {{mq_user}}
   user: name={{mq_user}} shell=/bin/bash password={{mq_user_crypted_password}} comment="Websphere MQ User" group=mqm
 
+- name: ibm-recommended sysctl http://www.ibm.com/support/knowledgecenter/SSFKSJ_7.5.0/com.ibm.mq.ins.doc/q008550_.htm
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    ignoreerrors: yes
+  with_items:
+    - { name: "kernel.shmmni", value: "4096" }
+    - { name: "kernel.shmall", value: "2097152" }
+    - { name: "kernel.shmmax", value: "268435456" }
+    - { name: "kernel.sem", value: "500 256000 250 1024" }
+    - { name: "fs.file-max", value: "524288" }
+    - { name: "kernel.pid-max", value: "120000" }
+    - { name: "kernel.threads-max", value: "48000" }
+
+- name: ibm-recommended security limits
+  lineinfile:
+    dest: /etc/security/limits.conf
+    state: present
+    line: "{{ item }}"
+  with_items:
+    - "mqm hard nofile 10240"
+    - "mqm soft nofile 10240"
+
 - name: Create QueueManager
   command: /opt/mqm/bin/crtmqm -q {{mq_queue_name}}.queue.manager
   args:
@@ -57,7 +81,7 @@
   when: queue_man_status.stdout.find('STATUS(Running)') == -1
 
 - name: Copy MQ define commands
-  template: src=templates/mq-define.txt.j2 dest=/tmp/mq-define.txt owner=mqm
+  template: src=mq-define.txt.j2 dest=/tmp/mq-define.txt owner=mqm
 
 - name: Define and start listener at 1414
   shell: /opt/mqm/bin/runmqsc < /tmp/mq-define.txt
