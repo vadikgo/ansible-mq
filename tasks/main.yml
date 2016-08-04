@@ -18,7 +18,7 @@
     owner: root
     group: root
     mode: 0755
-    creates: "{{mq_dist}}/server"
+    creates: "{{mq_dist}}/server/mqlicense.sh"
 
 - name: Accept MQ Client license
   command: ksh mqlicense.sh -accept
