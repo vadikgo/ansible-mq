@@ -1,5 +1,5 @@
 mq_zip_url: http://10.21.25.212:8000/WS_MQ_V8..0.0.2_LINUX_ON_X86_64_I.tar.gz
 mq_dist: /opt/IBM/mq
 mq_user: ovptest
-mq_user_crypted_password: $1fmynsSdJLpg
+mq_user_crypted_password: "{{ '123qwe' | password_hash('sha512')}}"
 mq_queue_name: QM_IFT
